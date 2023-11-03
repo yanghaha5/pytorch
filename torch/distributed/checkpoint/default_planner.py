@@ -38,6 +38,7 @@ from torch.distributed.checkpoint.planner_helpers import (
     _create_read_items,
     _create_write_items,
     _create_default_metadata_only_plan,
+    _initialize_meta_tensors,
 )
 
 from torch.distributed.checkpoint._nested_dict import (
@@ -178,6 +179,7 @@ class DefaultLoadPlanner(LoadPlanner):
         metadata: Metadata,
         is_coordinator: bool,
     ) -> None:
+        state_dict = _initialize_meta_tensors(state_dict)
         self.original_state_dict = state_dict
 
         if self.flatten_sharded_tensors:
