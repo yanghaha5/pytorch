@@ -970,6 +970,13 @@ def _is_barrier_after_init() -> int:
     return int(os.getenv("TORCH_DIST_INIT_BARRIER", "0"))
 
 
+def _is_collective_hash_debug_enabled() -> int:
+    # Environment variable to control whether we hash the input/output of a collective
+    # so that we can verify that everything is working as expected at c10d level.
+    # `TORCH_NCCL_COLLECTIVE_HASH_DEBUG=1` to enable this validation.
+    return int(os.getenv("TORCH_NCCL_COLLECTIVE_HASH_DEBUG", "0"))
+
+
 def _get_default_group():
     """Get the default process group created by init_process_group."""
     if not is_initialized():
@@ -2347,6 +2354,8 @@ def all_gather_multigpu(
 def _object_to_tensor(obj, device):
     f = io.BytesIO()
     _pickler(f).dump(obj)
+    if _is_collective_hash_debug_enabled():
+        logger.warning("_object_to_tensor hash value: {torch._C._distributed_c10d._hash_tensors([f.getvalue()])}")
     byte_storage = torch.ByteStorage._from_buffer(f.getvalue())  # type: ignore[attr-defined]
     # Do not replace `torch.ByteTensor` or `torch.LongTensor` with torch.tensor and specifying dtype.
     # Otherwise, it will casue 100X slowdown.
@@ -2357,6 +2366,8 @@ def _object_to_tensor(obj, device):
 
 
 def _tensor_to_object(tensor, tensor_size):
+    if _is_collective_hash_debug_enabled():
+        logger.warning("_tensor_to_object hash value: {torch._C._distributed_c10d._hash_tensors([tensor])}")
     tensor = tensor.cpu()
     buf = tensor.numpy().tobytes()[:tensor_size]
     return _unpickler(io.BytesIO(buf)).load()
