@@ -1049,6 +1049,7 @@ static PyObject* get_dispatch_mode(PyObject* _unused, PyObject* arg) {
   if (maybe_mode == c10::nullopt) {
     Py_RETURN_NONE;
   }
+  // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
   auto* r = maybe_mode.value()->ptr(getPyInterpreter());
   Py_INCREF(r);
   return r;
@@ -1064,6 +1065,7 @@ static PyObject* unset_dispatch_mode(PyObject* _unused, PyObject* arg) {
   if (maybe_mode == c10::nullopt) {
     Py_RETURN_NONE;
   }
+  // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
   auto* r = maybe_mode.value()->ptr(getPyInterpreter());
   Py_INCREF(r);
   return r;
