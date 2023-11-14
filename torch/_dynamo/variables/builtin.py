@@ -38,7 +38,7 @@ from ..utils import (
 from .base import MutableLocal, typestr, VariableTracker
 from .constant import ConstantVariable
 from .ctx_manager import EventVariable, StreamVariable
-from .dicts import ConstDictVariable, SetVariable
+from .dicts import ConstDictVariable, DictView, SetVariable
 from .lists import (
     BaseListVariable,
     ListIteratorVariable,
@@ -1423,10 +1423,9 @@ class BuiltinVariable(VariableTracker):
                 _unimplemented()
             return BaseListVariable.list_compare(tx, op, left, right)
 
-        if isinstance(left, SetVariable):
-            if not type(left) == type(right):  # Mismatch in BaseListVariable subclasses
-                _unimplemented()
-            return ConstantVariable.create(op(left.set_items, right._items))
+        # If they implement set semantics (e.g. SetVariable or DictKeys)
+        if hasattr(left, "set_items") and hasattr(right, "set_items"):
+            return ConstantVariable.create(op(left.set_items, right.set_items))
 
         if isinstance(left, TensorVariable) or isinstance(right, TensorVariable):
             from .builder import wrap_fx_proxy_cls
@@ -1503,8 +1502,9 @@ class BuiltinVariable(VariableTracker):
                 ),
                 sym_num=None,
             )
+        if hasattr(a, "set_items") and hasattr(b, "set_items"):
+            return SetVariable(list(a.set_items & b.set_items))
         # None no-ops this handler and lets the driving function proceed
-        return None
 
     # or_ is a constant fold function, so we only get here if constant fold is not valid
     def call_or_(self, tx, a, b):
@@ -1518,6 +1518,8 @@ class BuiltinVariable(VariableTracker):
                 ),
                 sym_num=None,
             )
+        if hasattr(a, "set_items") and hasattr(b, "set_items"):
+            return SetVariable(list(a.set_items | b.set_items))
         # None no-ops this handler and lets the driving function proceed
         return None
 
@@ -1531,7 +1533,10 @@ class BuiltinVariable(VariableTracker):
                 sym_num=None,
             )
 
-        if isinstance(a, ListVariable):
+        # Unwrap the underlying ConstDictVariable
+        if isinstance(a, DictView):
+            a = a.dv_dict
+        if isinstance(a, (ListVariable, ConstDictVariable)):
             return ConstantVariable.create(len(a.items) == 0)
 
         return None
