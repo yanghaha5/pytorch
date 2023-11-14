@@ -456,6 +456,11 @@ class AutogradFunctionVariable(VariableTracker):
             return self.call_apply(tx, args, kwargs)
         elif name == "backward":
             with tx.strict_translation_mode():
+                # backward function can be decorated by torch.autograd.function.once_differentiable,
+                # however, torch.compile doesn't support higher order gradients. And we can assume that
+                # the grad_mode during the backwards pass is False, so just inline the original function.
+                if hasattr(self.fn_cls.backward, "__wrapped__"):
+                    self.fn_cls.backward = self.fn_cls.backward.__wrapped__
                 if isinstance(self.fn_cls.backward, types.FunctionType):
                     backward = UserFunctionVariable(self.fn_cls.backward)
                 elif isinstance(self.fn_cls.backward, types.MethodType):
