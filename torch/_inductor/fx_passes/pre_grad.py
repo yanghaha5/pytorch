@@ -22,7 +22,7 @@ from ..pattern_matcher import (
     stable_topological_sort,
 )
 from ..utils import is_cpu_device
-from .group_batch_fusion import group_batch_fusion_pre_grad_passes
+from .group_batch_fusion import group_batch_fusion_passes
 
 log = logging.getLogger(__name__)
 
@@ -67,7 +67,7 @@ def pre_grad_passes(gm: torch.fx.GraphModule, example_inputs):
     if config.pattern_matcher:
         lazy_init()
         gm = fuse_fx(gm, example_inputs)
-        group_batch_fusion_pre_grad_passes(gm.graph)
+        group_batch_fusion_passes(gm.graph, True)
         for pattern_matcher_pass in pattern_matcher_passes:
             pattern_matcher_pass.apply(gm.graph)
 
