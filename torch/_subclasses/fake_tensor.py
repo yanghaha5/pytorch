@@ -261,11 +261,13 @@ class FakeTensorConverter:
     meta_converter: MetaConverter
     constant_storage_mapping: Dict[StorageWeakRef, List[ReferenceType]]
 
-    def __init__(self):
+    def __init__(self, parent=None):
         self.meta_converter = MetaConverter()
 
         # map from to storage to corresponding constant tensors
         self.constant_storage_mapping = {}
+
+        self.parent = parent
 
     def add_constant_storage_mapping(self, fake_tensor):
         # when you have a constant, aliased tensor:
@@ -333,6 +335,22 @@ class FakeTensorConverter:
         constraint_dims: "Optional[DimList[DimConstraint]]" = None,
         memoized_only=False,
     ):
+        if self.parent is not None:
+            # Avoid mixing modes NYI (actually, we can probably make
+            # a fake tensor that gets run in the wrong ambient fake tensor
+            # mode swap the modes properly)
+            with unset_fake_temporarily():
+                t = self.parent.from_real_tensor(
+                    fake_mode.parent,
+                    t,
+                    make_constant=make_constant,
+                    shape_env=shape_env,
+                    ignore_subclass=ignore_subclass,
+                    source=source,
+                    dynamic_dims=dynamic_dims,
+                    constraint_dims=constraint_dims,
+                    memoized_only=memoized_only,
+                )
         maybe_memo = self._get_memo(t)
         if maybe_memo is not None:
             return maybe_memo
@@ -370,6 +388,30 @@ class FakeTensorConverter:
             dynamic_dims=dynamic_dims,
             constraint_dims=constraint_dims,
         )
+        # This is a bit tricky.  We make use of FakeTensorMode as a persistent
+        # mapping so that we can remap real tensors to the same corresponding
+        # fake tensor if we ask for a remapping.  This remapping is currently
+        # load bearing in the Dynamo-AOTAutograd interaction, where
+        # AOTAutograd will try to refakeify real tensors to "fetch" the fake
+        # tensors that Dynamo created.
+        #
+        # However, FakeTensorMode doesn't actually hold a strong reference to
+        # fake tensors!  This is to break the reference cycle
+        # FakeTensorMode -> memo table -(weak)-> FakeTensor -> FakeTensorMode.
+        # So it's actually pretty easy to lose the reference.  Dynamo ensures
+        # the fakes don't go dead by saving them in TrackedFakes, but when
+        # you have chained two modes together, you can easily lose the
+        # fake tensor from the parent tensor.  This puts a strong reference to
+        # the parent on the child, so that their lifetimes are tied.
+        #
+        # If we eventually refactor AOTAutograd to use a separate, non-weak
+        # dict to lookup fake tensors from real tensors, this attribute would
+        # still be useful so that when we fakeify a tensor, we can get what
+        # the original fake (prior to any mutation was).  The alternative is
+        # to rewrite all fakeification call sites in Dynamo to manually do
+        # the first fakeify, and then the second fakeify.
+        if self.parent is not None:
+            out._orig_fake = t
         if out is NotImplemented:
             raise UnsupportedFakeTensorException("meta converter nyi")
         if make_constant:
@@ -1321,10 +1363,13 @@ class FakeTensorMode(TorchDispatchMode):
         allow_non_fake_inputs=False,
         shape_env=None,
         static_shapes=None,
+        parent=None,
     ):
         log.debug("create_mode 0x%x", id(self))
         self.allow_fallback_kernels = allow_fallback_kernels
-        self.fake_tensor_converter = FakeTensorConverter()
+        self.fake_tensor_converter = FakeTensorConverter(
+            parent.fake_tensor_converter if parent is not None else None
+        )
         if static_shapes is not None:
             self.static_shapes = static_shapes
         else:
@@ -1356,6 +1401,17 @@ class FakeTensorMode(TorchDispatchMode):
         # If another fake mode was already active when we enter, we also stash it here.
         # That way when we exit, we know to re-enable the previous fake mode.
         self.enter_stack: List[Tuple[bool, Optional[FakeTensorMode]]] = []
+
+        # The parent fake tensor mode lets you specify a fake tensor mode that
+        # you should fakeify any real tensors through first, before you
+        # fakeify them again here.  This is most useful if you have an
+        # immutable fake tensor mode you've created to keep track of the
+        # initial memoized fakeifications of real tensors; you can then
+        # chain fresh fake tensor modes off of the original fake tensor
+        # mode to reuse all of the properties you set, while having a
+        # completely distinct universe of fake tensors which you can mutate to
+        # your hearts content.
+        self.parent = parent
 
         self.shape_env = shape_env
 
