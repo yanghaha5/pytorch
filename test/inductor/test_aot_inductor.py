@@ -153,6 +153,7 @@ def check_model_with_multiple_inputs(
         {
             "aot_inductor.abi_compatible": self.abi_compatible,
             "allow_stack_allocation": self.allow_stack_allocation,
+            "use_minimal_arrayref_interface": self.use_minimal_arrayref_interface,
         }
     ):
         torch.manual_seed(0)
@@ -1190,11 +1191,16 @@ class AOTInductorTestABICompatibleCpu(TestCase):
     check_model = check_model
     check_model_with_multiple_inputs = check_model_with_multiple_inputs
     allow_stack_allocation = False
+    use_minimal_arrayref_interface = False
 
 
 def fail_with_and_without_stack_allocation(is_skip=False):
     return TestFailure(
-        ("abi_compatible_cpu", "abi_compatible_cpu_with_stack_allocation"),
+        (
+            "abi_compatible_cpu",
+            "abi_compatible_cpu_with_stack_allocation",
+            "abi_compatible_cpu_with_stack_allocation_and_minimal_arrayref_interface",
+        ),
         is_skip=is_skip,
     )
 
@@ -1210,6 +1216,11 @@ CPU_TEST_FAILURES = {
     # TODO: test_freezing_abi_compatible_cpu somehow fails on CI but not locally,
     #   NotImplementedError: Cannot access storage of OpaqueTensorImpl
     "test_freezing": fail_with_and_without_stack_allocation(is_skip=True),
+    # minimal arrayref interface only works with CPU; test crashes.
+    "test_multi_device": TestFailure(
+        ("abi_compatible_cpu_with_stack_allocation_and_minimal_arrayref_interface",),
+        is_skip=True,
+    ),
     "test_normal_functional": fail_with_and_without_stack_allocation(),
     "test_poi_multiple_dynamic": fail_with_and_without_stack_allocation(),
     # There is a double-free issue which will be fixed in another PR
@@ -1231,6 +1242,7 @@ class AOTInductorTestABICompatibleCpuWithStackAllocation(TestCase):
     check_model = check_model
     check_model_with_multiple_inputs = check_model_with_multiple_inputs
     allow_stack_allocation = True
+    use_minimal_arrayref_interface = False
 
 
 copy_tests(
@@ -1241,12 +1253,32 @@ copy_tests(
 )
 
 
+class AOTInductorTestABICompatibleCpuWithStackAllocationAndMinimalArrayRefInterface(
+    TestCase
+):
+    device = "cpu"
+    abi_compatible = True
+    check_model = check_model
+    check_model_with_multiple_inputs = check_model_with_multiple_inputs
+    allow_stack_allocation = True
+    use_minimal_arrayref_interface = True
+
+
+copy_tests(
+    AOTInductorTestsTemplate,
+    AOTInductorTestABICompatibleCpuWithStackAllocationAndMinimalArrayRefInterface,
+    "abi_compatible_cpu_with_stack_allocation_and_minimal_arrayref_interface",
+    CPU_TEST_FAILURES,
+)
+
+
 class AOTInductorTestABICompatibleCuda(TestCase):
     device = "cuda"
     abi_compatible = True
     check_model = check_model
     check_model_with_multiple_inputs = check_model_with_multiple_inputs
     allow_stack_allocation = False
+    use_minimal_arrayref_interface = False
 
 
 copy_tests(
@@ -1270,6 +1302,7 @@ class AOTInductorTestNonABICompatibleCpu(TestCase):
     check_model = check_model
     check_model_with_multiple_inputs = check_model_with_multiple_inputs
     allow_stack_allocation = False
+    use_minimal_arrayref_interface = False
 
 
 copy_tests(
@@ -1297,6 +1330,7 @@ class AOTInductorTestNonABICompatibleCuda(TestCase):
     check_model = check_model
     check_model_with_multiple_inputs = check_model_with_multiple_inputs
     allow_stack_allocation = False
+    use_minimal_arrayref_interface = False
 
 
 copy_tests(
