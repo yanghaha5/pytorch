@@ -1291,6 +1291,7 @@ if(USE_ROCM)
     list(APPEND Caffe2_PUBLIC_HIP_DEPENDENCY_LIBS
       roc::hipblas hip::hipfft hip::hiprand roc::hipsparse roc::hipsolver)
 
+    include(${CMAKE_CURRENT_LIST_DIR}/External/oort.cmake)
   else()
     caffe2_update_option(USE_ROCM OFF)
   endif()
