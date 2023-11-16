@@ -1512,6 +1512,10 @@ class CudaKernelParamCache:
     def get(cls, key: str) -> Optional[Dict[str, str]]:
         return cls.cache.get(key, None)
 
+    @classmethod
+    def get_keys(cls):
+        return cls.cache.keys()
+
 
 class AotCodeCache:
     cache: Dict[str, str] = dict()
