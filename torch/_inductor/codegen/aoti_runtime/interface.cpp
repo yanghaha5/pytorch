@@ -198,7 +198,6 @@ AOTIRuntimeError AOTInductorModelRun(
   })
 }
 
-
 AOTIRuntimeError AOTInductorModelDelete(
     AOTInductorModelHandle model_handle
 ) {
