@@ -34,7 +34,7 @@ import torch
 import torch._inductor.test_operators
 import torch.distributed
 import torch.utils._content_store
-from .utils import getfile
+from .utils import getfile, module_dir, strip_init_py
 
 from .variables.functions import (
     NestedUserFunctionVariable,
@@ -146,14 +146,6 @@ THIRDPARTY_SKIPLIST = (
 )
 
 
-def _strip_init_py(s):
-    return re.sub(r"__init__.py$", "", s)
-
-
-def _module_dir(m: types.ModuleType):
-    return _strip_init_py(m.__file__)
-
-
 # TODO: Add a decoractor for easily adding functions to FUNC_INLINELIST
 # after resolving all circular import issues.
 FUNC_INLINELIST = {
@@ -239,7 +231,7 @@ def get_func_inlinelist():
 def get_legacy_mod_inlinelist():
     inlinelist = set()
     for m in LEGACY_MOD_INLINELIST:
-        inlinelist.add(_module_dir(torch) + m[len("torch.") :].replace(".", "/"))
+        inlinelist.add(module_dir(torch) + m[len("torch.") :].replace(".", "/"))
     return inlinelist
 
 
@@ -247,7 +239,7 @@ def get_legacy_mod_inlinelist():
 def get_mod_inlinelist():
     inlinelist = set()
     for m in MOD_INLINELIST:
-        inlinelist.add(_module_dir(torch) + m[len("torch.") :].replace(".", "/"))
+        inlinelist.add(module_dir(torch) + m[len("torch.") :].replace(".", "/"))
     return inlinelist
 
 
@@ -255,7 +247,7 @@ def get_mod_inlinelist():
 SKIP_DIRS = [
     "<frozen importlib",
     "<__array_function__ internals>",
-] + [_module_dir(m) for m in BUILTIN_SKIPLIST]
+] + [module_dir(m) for m in BUILTIN_SKIPLIST]
 
 SKIP_DIRS_RE = re.compile(r"match nothing^")
 
@@ -288,7 +280,7 @@ def add(import_name: str):
     if origin is None:
         return
     global SKIP_DIRS_RE
-    SKIP_DIRS.append(_strip_init_py(origin))
+    SKIP_DIRS.append(strip_init_py(origin))
     _recompile_re()
 
 
@@ -394,10 +386,10 @@ def is_torch_inline_allowed(filename):
 def dynamo_dir():
     import torch._dynamo
 
-    return _module_dir(torch._dynamo)
+    return module_dir(torch._dynamo)
 
 
 def is_torch(filename):
     if filename.startswith(dynamo_dir()):
         return False
-    return filename.startswith(_module_dir(torch))
+    return filename.startswith(module_dir(torch))

@@ -19,6 +19,7 @@ from ..utils import (
     check_constant_args,
     identity,
     is_tensor_base_attr_getter,
+    module_dir,
     proxy_args_kwargs,
 )
 from .base import MutableLocal, VariableTracker
@@ -459,7 +460,11 @@ class AutogradFunctionVariable(VariableTracker):
                 # backward function can be decorated by torch.autograd.function.once_differentiable,
                 # however, torch.compile doesn't support higher order gradients. And we can assume that
                 # the grad_mode during the backwards pass is False, so just inline the original function.
-                if hasattr(self.fn_cls.backward, "__wrapped__"):
+                if hasattr(
+                    self.fn_cls.backward, "__wrapped__"
+                ) and self.fn_cls.backward.__code__.co_filename == module_dir(
+                    torch.autograd.function
+                ):
                     self.fn_cls.backward = self.fn_cls.backward.__wrapped__
                 if isinstance(self.fn_cls.backward, types.FunctionType):
                     backward = UserFunctionVariable(self.fn_cls.backward)

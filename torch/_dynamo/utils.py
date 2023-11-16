@@ -17,6 +17,7 @@ import math
 import operator
 import os
 import pstats
+import re
 import subprocess
 import sys
 import textwrap
@@ -741,6 +742,14 @@ def getfile(obj):
         return inspect.getfile(obj)
     except TypeError:
         return None
+
+
+def strip_init_py(s):
+    return re.sub(r"__init__.py$", "", s)
+
+
+def module_dir(m: types.ModuleType):
+    return strip_init_py(m.__file__)
 
 
 def is_namedtuple(obj):
