@@ -892,7 +892,7 @@ def triton_config(
     return Config(cfg, num_warps=num_warps, num_stages=num_stages)
 
 
-def triton_config_reduction(size_hints, x, r, num_stages=1, num_warps=None) -> Config:
+def triton_config_reduction(size_hints, x, r, triton_meta, num_stages=1, num_warps=None) -> Config:
     """
     Construct a reduction triton config with some adjustment heuristics
     based on size_hints. Size_hints is a tuple of numels in each tile
@@ -914,8 +914,16 @@ def triton_config_reduction(size_hints, x, r, num_stages=1, num_warps=None) -> C
         r *= 2
 
     cfg = {"XBLOCK": x, "RBLOCK": r}
+    elem_size = 32
+    if triton_meta and triton_meta.get("signature"):
+        for param in triton_meta["signature"].values():
+            if param == "*fp16" or param == "*bf16" or param == "*int16":
+                elem_size = min(elem_size, 16)
+            elif param == "*fp8e4nv" or param == "*fp8e5" or param == "*int8":
+                elem_size = min(elem_size, 8)
+    size_per_thread = 128 // elem_size
     if num_warps is None:
-        num_warps = conditional_product(x, r) // 128
+        num_warps = conditional_product(x, r) // (size_per_thread * 32)
     num_warps = next_power_of_2(min(max(num_warps, 2), 8))
     check_config(cfg, xnumel=size_hints[0])
     return Config(cfg, num_warps=num_warps, num_stages=num_stages)
@@ -1076,11 +1084,11 @@ def reduction(
     rnumel = size_hints[-1]
     if len(size_hints) == 2:
         contiguous_config = triton_config_reduction(
-            size_hints, 1, (rnumel if 256 <= rnumel < 2048 else 2048)
+            size_hints, 1, (rnumel if 256 <= rnumel < 2048 else 2048), triton_meta
         )
-        outer_config = triton_config_reduction(size_hints, 128, 8)
+        outer_config = triton_config_reduction(size_hints, 128, 8, triton_meta)
         tiny_config = triton_config_reduction(
-            size_hints, 2 * (256 // rnumel) if rnumel <= 256 else 1, min(rnumel, 2048)
+            size_hints, 2 * (256 // rnumel) if rnumel <= 256 else 1, min(rnumel, 2048), triton_meta
         )
         if config.max_autotune or config.max_autotune_pointwise:
             pass  # skip all these cases
@@ -1114,7 +1122,7 @@ def reduction(
         if disable_pointwise_autotuning():
             return cached_autotune(
                 size_hints,
-                [triton_config_reduction(size_hints, 32, 128)],
+                [triton_config_reduction(size_hints, 32, 128, triton_meta)],
                 triton_meta=triton_meta,
                 inductor_meta=inductor_meta,
                 heuristic_type=HeuristicType.REDUCTION,
@@ -1126,12 +1134,12 @@ def reduction(
                 contiguous_config,
                 outer_config,
                 tiny_config,
-                triton_config_reduction(size_hints, 64, 64),
-                triton_config_reduction(size_hints, 8, 512),
+                triton_config_reduction(size_hints, 64, 64, triton_meta),
+                triton_config_reduction(size_hints, 8, 512, triton_meta),
                 # halve the XBLOCK/RBLOCK compared to outer_config
                 # TODO: this may only be beneficial when each iteration of the reduction
                 # is quite heavy. E.g. https://gist.github.com/shunting314/189a8ef69f90db9d614a823385147a72
-                triton_config_reduction(size_hints, 64, 4, num_warps=8),
+                triton_config_reduction(size_hints, 64, 4, triton_meta, num_warps=8),
             ],
             triton_meta=triton_meta,
             inductor_meta=inductor_meta,
@@ -1151,7 +1159,7 @@ def persistent_reduction(
     xnumel, rnumel = size_hints
 
     configs = [
-        triton_config_reduction(size_hints, xblock, rnumel)
+        triton_config_reduction(size_hints, xblock, rnumel, triton_meta)
         for xblock in (1, 8, 32, 128)
         if rnumel * xblock <= 4096 and xblock <= xnumel
     ]
@@ -1164,7 +1172,7 @@ def persistent_reduction(
     elif reduction_hint == ReductionHint.OUTER_TINY:
         configs = [
             triton_config_reduction(
-                size_hints, 2 * (256 // rnumel) if rnumel <= 256 else 1, rnumel
+                size_hints, 2 * (256 // rnumel) if rnumel <= 256 else 1, rnumel, triton_meta
             )
         ]
     for c in configs:
