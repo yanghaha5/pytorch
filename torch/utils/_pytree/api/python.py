@@ -33,8 +33,21 @@ from typing import (
     overload,
     Tuple,
     Type,
-    TypeVar,
     Union,
+)
+
+from .typing import (
+    Context,
+    DumpableContext,
+    FlattenFunc,
+    FromDumpableContextFn,
+    PyTree,
+    R,
+    S,
+    T,
+    ToDumpableContextFn,
+    U,
+    UnflattenFunc,
 )
 
 
@@ -67,22 +80,9 @@ __all__ = [
 ]
 
 
-T = TypeVar("T")
-S = TypeVar("S")
-U = TypeVar("U")
-R = TypeVar("R")
-
-
 DEFAULT_TREESPEC_SERIALIZATION_PROTOCOL = 1
 NO_SERIALIZED_TYPE_NAME_FOUND = "NO_SERIALIZED_TYPE_NAME_FOUND"
 
-Context = Any
-PyTree = Any
-FlattenFunc = Callable[[PyTree], Tuple[List, Context]]
-UnflattenFunc = Callable[[Iterable, Context], PyTree]
-DumpableContext = Any  # Any json dumpable text
-ToDumpableContextFn = Callable[[Context], DumpableContext]
-FromDumpableContextFn = Callable[[DumpableContext], Context]
 ToStrFunc = Callable[["TreeSpec", List[str]], str]
 MaybeFromStrFunc = Callable[[str], Optional[Tuple[Any, Context, str]]]
 
@@ -161,7 +161,7 @@ def register_pytree_node(
     )
 
     try:
-        from . import _cxx_pytree as cxx
+        from . import cxx
     except ImportError:
         pass
     else:
