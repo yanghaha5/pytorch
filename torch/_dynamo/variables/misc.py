@@ -848,6 +848,66 @@ class SkipFilesVariable(VariableTracker):
             for item in itertools.combinations(iterable, r):
                 items.append(variables.TupleVariable(list(item)))
             return variables.ListIteratorVariable(items, mutable_local=MutableLocal())
+        elif self.value is itertools.groupby:
+            if any(kw != "key" for kw in kwargs.keys()):
+                unimplemented(
+                    "Unsupported kwargs for itertools.groupby: "
+                    f"{','.join(set(kwargs.keys()) - {'key'})}"
+                )
+
+            if len(args) == 1 and args[0].has_unpack_var_sequence(tx):
+                seq = args[0].unpack_var_sequence(tx)
+                keyfunc = kwargs.get("key").call_function if "key" in kwargs else None
+            else:
+                unimplemented("Unsupported arguments for itertools.groupby")
+
+            def gen_last_pair(last_pair):
+                return variables.TupleVariable(
+                    [
+                        last_pair[0],
+                        variables.ListIteratorVariable(
+                            last_pair[1], mutable_local=MutableLocal()
+                        ),
+                    ],
+                    mutable_local=MutableLocal(),
+                )
+
+            def retrieve_const_key(key):
+                if isinstance(key, variables.SymNodeVariable):
+                    return key.evaluate_expr()
+                elif isinstance(key, variables.ConstantVariable):
+                    return key.as_python_constant()
+                else:
+                    raise unimplemented(
+                        "Unsupported key type in itertools.groupby: "
+                        + type(current_key)
+                    )
+
+            result = []
+            last_pair = None
+            for item in seq:
+                try:
+                    # default key function is identity
+                    current_key = (
+                        keyfunc(tx, [item], {}) if keyfunc is not None else item
+                    )
+                except Exception:
+                    raise unimplemented(  # noqa: TRY200
+                        f"Unexpected failure in invoking function during itertools.groupby: failed running func {keyfunc}({item})",
+                    )
+
+                if last_pair is not None and retrieve_const_key(
+                    current_key
+                ) == retrieve_const_key(last_pair[0]):
+                    last_pair[1].append(item)
+                else:
+                    if last_pair is not None:
+                        result.append(gen_last_pair(last_pair))
+                    last_pair = [current_key, [item]]
+
+            if last_pair is not None:
+                result.append(gen_last_pair(last_pair))
+            return variables.ListIteratorVariable(result, mutable_local=MutableLocal())
         elif (
             self.value is functools.wraps
             and not kwargs
