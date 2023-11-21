@@ -2656,7 +2656,8 @@ class ShapeEnv:
                 for i, ss in enumerate(curr_t.size()):
                     property_source = TensorPropertySource(src, TensorProperty.SIZE, i)
                     track_symint(property_source, ss, constraint[i])
-                if not t.is_nested:
+                is_strided_nt = (t.is_nested and t.layout == torch.strided)
+                if not is_strided_nt:
                     for i, ss in enumerate(curr_t.stride()):
                         track_symint(TensorPropertySource(src, TensorProperty.STRIDE, i), ss)
                     track_symint(TensorPropertySource(src, TensorProperty.STORAGE_OFFSET), curr_t.storage_offset())
